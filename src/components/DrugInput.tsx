@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Shield, Search, ChevronRight } from "lucide-react";
+import { Shield, Search, X, Pill } from "lucide-react";
 import { getDrugNames } from "@/data/drugDatabase";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -12,45 +12,88 @@ interface DrugInputProps {
 
 export function DrugInput({ selectedDrugs, onDrugsChange }: DrugInputProps) {
   const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const allDrugs = getDrugNames();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return allDrugs.filter(d => !selectedDrugs.includes(d));
-    return allDrugs.filter(
-      d => d.toLowerCase().includes(query.toLowerCase()) && !selectedDrugs.includes(d)
-    );
-  }, [query, selectedDrugs]);
+    if (!query.trim()) return [];
+    return allDrugs
+      .filter(
+        d => d.toLowerCase().includes(query.toLowerCase()) && !selectedDrugs.includes(d)
+      )
+      .slice(0, 8);
+  }, [query, selectedDrugs, allDrugs]);
 
-  const addDrug = (name: string) => {
-    onDrugsChange([...selectedDrugs, name]);
+  const showDropdown = isOpen && query.trim().length > 0;
+
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [filtered]);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const addDrug = useCallback((name: string) => {
+    if (!selectedDrugs.includes(name)) {
+      onDrugsChange([...selectedDrugs, name]);
+    }
     setQuery("");
-  };
+    setIsOpen(false);
+  }, [selectedDrugs, onDrugsChange]);
 
   const removeDrug = (name: string) => {
     onDrugsChange(selectedDrugs.filter(d => d !== name));
   };
 
-  // Quick analysis: comma-separated
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && query.includes(",")) {
+    if (e.key === "Escape") {
+      setIsOpen(false);
+      return;
+    }
+
+    if (!showDropdown || filtered.length === 0) return;
+
+    if (e.key === "ArrowDown") {
       e.preventDefault();
-      const names = query.split(",").map(s => s.trim()).filter(Boolean);
-      const valid = names.filter(n => allDrugs.some(d => d.toLowerCase() === n.toLowerCase()));
-      const resolved = valid.map(n => allDrugs.find(d => d.toLowerCase() === n.toLowerCase())!);
-      const unique = [...new Set([...selectedDrugs, ...resolved])];
-      onDrugsChange(unique);
-      setQuery("");
+      setHighlightedIndex(prev => (prev < filtered.length - 1 ? prev + 1 : 0));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightedIndex(prev => (prev > 0 ? prev - 1 : filtered.length - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < filtered.length) {
+        addDrug(filtered[highlightedIndex]);
+      }
     }
   };
 
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (highlightedIndex >= 0 && listRef.current) {
+      const items = listRef.current.querySelectorAll("[data-drug-item]");
+      items[highlightedIndex]?.scrollIntoView({ block: "nearest" });
+    }
+  }, [highlightedIndex]);
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" ref={containerRef}>
       <label className="text-sm font-medium text-foreground flex items-center gap-2">
         <Shield className="h-4 w-4 text-primary" />
         Medicines
       </label>
 
-      {/* Selected drugs */}
+      {/* Selected drug chips */}
       <AnimatePresence>
         {selectedDrugs.length > 0 && (
           <motion.div
@@ -67,10 +110,12 @@ export function DrugInput({ selectedDrugs, onDrugsChange }: DrugInputProps) {
               >
                 <Badge
                   variant="secondary"
-                  className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground transition-colors px-3 py-1.5 text-sm"
+                  className="cursor-pointer group hover:bg-destructive hover:text-destructive-foreground transition-colors pl-3 pr-2 py-1.5 text-sm flex items-center gap-1.5 rounded-full"
                   onClick={() => removeDrug(drug)}
                 >
-                  {drug} ×
+                  <Pill className="h-3 w-3" />
+                  {drug}
+                  <X className="h-3 w-3 opacity-60 group-hover:opacity-100 transition-opacity" />
                 </Badge>
               </motion.div>
             ))}
@@ -83,35 +128,55 @@ export function DrugInput({ selectedDrugs, onDrugsChange }: DrugInputProps) {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           value={query}
-          onChange={e => setQuery(e.target.value)}
+          onChange={e => {
+            setQuery(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Search medicines or enter comma-separated names..."
+          placeholder="Search medicines like Dolo 650, Aspirin, Warfarin..."
           className="pl-10"
         />
+
+        {/* Dropdown */}
+        <AnimatePresence>
+          {showDropdown && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.15 }}
+              className="absolute z-50 left-0 right-0 mt-1 rounded-lg border bg-card shadow-lg overflow-hidden"
+              ref={listRef}
+            >
+              {filtered.length > 0 ? (
+                filtered.map((drug, index) => (
+                  <button
+                    key={drug}
+                    data-drug-item
+                    onClick={() => addDrug(drug)}
+                    className={`w-full px-4 py-2.5 text-left text-sm transition-colors flex items-center gap-3 ${
+                      index === highlightedIndex
+                        ? "bg-accent text-accent-foreground"
+                        : "hover:bg-accent/50"
+                    }`}
+                  >
+                    <Pill className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span>{drug}</span>
+                  </button>
+                ))
+              ) : (
+                <div className="px-4 py-3 text-sm text-muted-foreground text-center">
+                  No matching medicine found
+                </div>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Dropdown */}
-      {query.trim() && filtered.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -4 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-lg border bg-card shadow-md overflow-hidden"
-        >
-          {filtered.slice(0, 6).map(drug => (
-            <button
-              key={drug}
-              onClick={() => addDrug(drug)}
-              className="w-full px-4 py-2.5 text-left text-sm hover:bg-accent transition-colors flex items-center justify-between group"
-            >
-              <span>{drug}</span>
-              <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-            </button>
-          ))}
-        </motion.div>
-      )}
-
       <p className="text-xs text-muted-foreground">
-        💡 Quick mode: type comma-separated names and press Enter
+        Start typing a medicine name and select from suggestions. You can add multiple medicines.
       </p>
     </div>
   );
