@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Shield, Activity, AlertTriangle, Sparkles, ArrowRight, RotateCcw } from "lucide-react";
+import { Shield, Activity, AlertTriangle, Sparkles, ArrowRight, RotateCcw, Check, Loader2 } from "lucide-react";
 import { DrugInput } from "@/components/DrugInput";
 import { RiskMeter } from "@/components/RiskMeter";
 import { WarningCard } from "@/components/WarningCard";
@@ -18,12 +18,18 @@ const Index = () => {
   const [allergies, setAllergies] = useState("");
   const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
   const [result, setResult] = useState<RiskResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const handleAnalyze = useCallback(() => {
     if (selectedDrugs.length === 0) return;
-    const allergyList = allergies.split(",").map(a => a.trim()).filter(Boolean);
-    const res = analyzeRisk(selectedDrugs, ageGroup, allergyList, selectedConditions);
-    setResult(res);
+    setIsAnalyzing(true);
+    // Simulate brief analysis delay for UX
+    setTimeout(() => {
+      const allergyList = allergies.split(",").map(a => a.trim()).filter(Boolean);
+      const res = analyzeRisk(selectedDrugs, ageGroup, allergyList, selectedConditions);
+      setResult(res);
+      setIsAnalyzing(false);
+    }, 1200);
   }, [selectedDrugs, ageGroup, allergies, selectedConditions]);
 
   const handleReset = () => {
@@ -60,7 +66,7 @@ const Index = () => {
         </div>
       </header>
 
-      <main className="container max-w-4xl mx-auto px-4 py-8">
+      <main className="container max-w-4xl mx-auto px-4 py-5">
         <AnimatePresence mode="wait">
           {!result ? (
             <motion.div
@@ -68,17 +74,17 @@ const Index = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="space-y-8"
+              className="space-y-5"
             >
-              {/* Hero */}
-              <div className="text-center space-y-3 pb-4">
+              {/* Hero - tighter */}
+              <div className="text-center space-y-2 pb-1">
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   transition={{ type: "spring", stiffness: 200 }}
-                  className="mx-auto h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center"
+                  className="mx-auto h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center"
                 >
-                  <Activity className="h-8 w-8 text-primary" />
+                  <Activity className="h-6 w-6 text-primary" />
                 </motion.div>
                 <h2 className="text-2xl md:text-3xl font-display font-bold text-foreground">
                   Check Your Medication Safety
@@ -89,8 +95,8 @@ const Index = () => {
                 </p>
               </div>
 
-              {/* Form */}
-              <div className="bg-card rounded-xl border shadow-sm p-6 space-y-6">
+              {/* Form - stronger card */}
+              <div className="bg-card rounded-xl border border-border/80 shadow-[var(--shadow-elevated)] p-6 space-y-6">
                 <DrugInput selectedDrugs={selectedDrugs} onDrugsChange={setSelectedDrugs} />
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -125,32 +131,45 @@ const Index = () => {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Existing Conditions</label>
                   <div className="flex flex-wrap gap-2">
-                    {conditions.map(c => (
-                      <button
-                        key={c}
-                        onClick={() => toggleCondition(c)}
-                        className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
-                          selectedConditions.includes(c)
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-card text-muted-foreground border-border hover:border-primary/50"
-                        }`}
-                      >
-                        {c}
-                      </button>
-                    ))}
+                    {conditions.map(c => {
+                      const isSelected = selectedConditions.includes(c);
+                      return (
+                        <button
+                          key={c}
+                          onClick={() => toggleCondition(c)}
+                          className={`text-xs px-3 py-1.5 rounded-full border transition-all flex items-center gap-1.5 ${
+                            isSelected
+                              ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                              : "bg-card text-muted-foreground border-border hover:border-primary/50"
+                          }`}
+                        >
+                          {isSelected && <Check className="h-3 w-3" />}
+                          {c}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* Analyze button */}
                 <Button
                   onClick={handleAnalyze}
-                  disabled={selectedDrugs.length === 0}
-                  className="w-full h-12 text-base font-semibold gap-2"
+                  disabled={selectedDrugs.length === 0 || isAnalyzing}
+                  className="w-full h-12 text-base font-semibold gap-2 shadow-md"
                   size="lg"
                 >
-                  <Sparkles className="h-4 w-4" />
-                  Analyze Risk
-                  <ArrowRight className="h-4 w-4" />
+                  {isAnalyzing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Analyzing medication safety...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Analyze Risk
+                      <ArrowRight className="h-4 w-4" />
+                    </>
+                  )}
                 </Button>
               </div>
 
